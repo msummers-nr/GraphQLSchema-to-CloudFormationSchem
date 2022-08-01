@@ -12,6 +12,7 @@ import (
 
 func main() {
    // Load the GraphQL Schema into an AST
+   // TODO make this a command line param
    source, err := ioutil.ReadFile("schema.graphql")
    if err != nil {
       log.Fatalf("error reading schema.json file: %v", err)
@@ -23,11 +24,13 @@ func main() {
       BuiltIn: true,
    }
 
+   // Parse the document
    document, gqlerr := parser.ParseSchema(&src)
    if gqlerr != nil {
       log.Fatalf("error parsing schema.json: %v", gqlerr)
    }
 
+   // Create a new model for output
    jsonDocument := model.NewDocument()
 
    for _, mutation := range getMutationTypes(document) {
@@ -35,21 +38,25 @@ func main() {
       // TODO make the mutation name(s) a command line parameter
       targetMutation := mutationDefinition.Fields.ForName("dashboardCreate")
       log.Printf("main: targetMutation: Name: %+v Type: %v Arguments: %+v", targetMutation.Name, targetMutation.Type, targetMutation.Arguments)
-      // NOTE: args go in properties!
+      // NOTE: args go in JSON properties!
       for _, argDef := range targetMutation.Arguments {
          argDef.Description = ""
          log.Printf("main: argDef: %+v", argDef)
+         // See if this is a Graphql Schema definition or a builtin
          def := document.Definitions.ForName(argDef.Type.NamedType)
          if def == nil {
             // Then it's a schema built-in type like Int, covert the argDef to a vanilla Definition
             def = model.NewBasicTypeDefinition(argDef.Name, argDef.Directives)
          }
+         // Create a new model property
          property, err := model.NewProperty(def, argDef.Type)
          if err != nil {
             log.Errorf("error processing Defintion: %v", err)
             continue
          }
+         // Add the property to the output model
          jsonDocument.AddProperty(argDef, property.AsSchemaProperty())
+         // Recursively travel down the argDef.Type
          jsonDocument.SplunkTypeDefinitions(argDef.Type, document)
       }
    }

@@ -61,6 +61,7 @@ func (d *Document) AddProperty(argDef *ast.ArgumentDefinition, property *Propert
    return
 }
 
+// Recursively travel down the astType
 func (d *Document) SplunkTypeDefinitions(astType *ast.Type, gqlSchema *ast.SchemaDocument) {
    log.Printf("SplunkDefintions: astType.NamedType: %v", astType.NamedType)
    var def *ast.Definition
