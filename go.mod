@@ -3,7 +3,6 @@ module GraphQLSchema-to-CloudFormationSchema
 go 1.18
 
 require (
-	github.com/graphql-go/graphql v0.8.0
 	github.com/sirupsen/logrus v1.8.1
 	github.com/vektah/gqlparser/v2 v2.4.6
 )

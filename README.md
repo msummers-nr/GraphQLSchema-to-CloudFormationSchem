@@ -1,0 +1,3 @@
+- [CloudFormation JSON Schema definitions](https://github.com/aws-cloudformation/cloudformation-cli/tree/master/src/rpdk/core/data/schema)
+- [NerdGraph GraphQL Schema definition](schema.graphql)
+- build & run `go build cmd/gqlparser/main.go  ; ./main > main.json`
