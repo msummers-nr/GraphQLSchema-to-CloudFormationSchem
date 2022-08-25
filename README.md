@@ -9,3 +9,7 @@ Helpful links
 
 Build & run
 - `go build cmd/gqlparser/main.go  ; ./main > main.json`
+- Refer to generated files, translated-mutation-schema.json and translated-query-schema.json, for schema output
+
+Notes
+- Pay attention to edge case with non-null type modifiers ("!") within a GraphQL list (ex: `[Test!]`). This should not allow null members in the array but may in the JSON translation.
