@@ -1,140 +1,110 @@
 package main
 
 import (
-	"GraphQLSchema-to-CloudFormationSchema/pkg/aws/cloudformation/model"
-	"encoding/json"
-	"fmt"
-	log "github.com/sirupsen/logrus"
-	"github.com/vektah/gqlparser/v2/ast"
-	"github.com/vektah/gqlparser/v2/parser"
-	"io/ioutil"
-	"os"
+   "GraphQLSchema-to-CloudFormationSchema/pkg/nerdgraph"
+   "flag"
+   "fmt"
+   log "github.com/sirupsen/logrus"
+   "github.com/vektah/gqlparser/v2/ast"
+   "github.com/vektah/gqlparser/v2/parser"
+   "os"
+   "strings"
 )
 
 func main() {
-	// Load the GraphQL Schema into an AST
-	var schema string
-	fmt.Printf("Enter GraphQL Schema to translate: ")
-	fmt.Scan(&schema)
-	source, err := ioutil.ReadFile(schema) //ex: schema.graphql
-	if err != nil {
-		log.Fatalf("error reading file %v: %v", schema, err)
-	}
 
-	src := ast.Source{
-		Name:    "",
-		Input:   string(source),
-		BuiltIn: true,
-	}
+   // Command line params
+   schema := flag.String("schema", "schema.graphql", "File containing the GraphQL Schema to parse")
+   list := flag.Bool("list", false, "Set to true to list available mutations and queries")
+   mutations := flag.String("mutations", "", "Comma separated list of mutation prefixes to process. Empty == all")
+   queries := flag.String("queries", "", "Comma separated list of queries to process. Empty == all")
+   logLevel := flag.String("logLevel", "info", "logrus logging level panic | fatal | error | warn | info | debug | trace")
+   flag.Parse()
 
-	// Parse the document
-	document, gqlerr := parser.ParseSchema(&src)
-	if gqlerr != nil {
-		log.Fatalf("error parsing document: %v", gqlerr)
-	}
+   level, err := log.ParseLevel(*logLevel)
+   if err != nil {
+      log.Warnf("main: invalid logLevel: %s err: %v", *logLevel, err)
+      log.SetLevel(log.InfoLevel)
+   } else {
+      log.SetLevel(level)
+   }
+   log.Infof("main: logLevel: %v", log.GetLevel())
 
-	// Create a new model for mutation type output
-	jsonDocumentMutation := model.NewDocument()
+   mutationList := strings.Split(*mutations, ",")
+   queryList := strings.Split(*queries, ",")
+   allMutations := false
+   if len(mutationList) == 0 {
+      allMutations = true
+   }
+   allQueries := false
+   if len(queryList) == 0 {
+      allQueries = true
+   }
+   _ = allQueries
 
-	// Create a new model for query type output
-	jsonDocumentQuery := model.NewDocument()
+   // Read the schema file
+   source, err := os.ReadFile(*schema) // ex: schema.graphql
+   log.Debugf("Reading schema: %s", *schema)
+   if err != nil {
+      log.Fatalf("error reading file %v: %v", *schema, err)
+   }
 
-	//For GraphQL mutation types
-	for _, mutation := range getMutationTypes(document) {
-		mutationDefinition := document.Definitions.ForName(mutation)
+   // Load the GraphQL Schema into an AST
+   src := ast.Source{
+      Name:    "",
+      Input:   string(source),
+      BuiltIn: true,
+   }
 
-		var targetMutationName string
-		fmt.Printf("Enter a target mutation type to translate or press 1 to exit: ")
-		fmt.Scan(&targetMutationName) //test - dashboardCreate
-		if targetMutationName == "1" {
-			break
-		}
-		targetMutation := mutationDefinition.Fields.ForName(targetMutationName)
+   // Parse the schemaDocument
+   schemaDocument, err := parser.ParseSchema(&src)
+   if err != nil {
+      log.Fatalf("error parsing schemaDocument: %+v", err)
+   }
 
-		log.Printf("main: targetMutation: Name: %+v Type: %v Arguments: %+v", targetMutation.Name, targetMutation.Type, targetMutation.Arguments)
+   services := make(map[string]*nerdgraph.Service)
+   for _, mutationDefinition := range getMutationDefinitions(schemaDocument) {
+      // At this point we have a HIGH LEVEL (e.g. RootMutationType), the mutations we're interested in are buried in that object's Fields
+      for _, fieldDefinition := range mutationDefinition.Fields {
+         if *list {
+            fmt.Printf("mutation: %s\n", fieldDefinition.Type)
+         }
 
-		//handle recursion through types based on if definition arguments exist
-		if targetMutation.Arguments == nil {
-			recurseFieldTypes(document, jsonDocumentMutation, targetMutation)
-		} else {
-			// Uncomment below to also run through targetMutation.Type, not required, warning: increases schema size significantly
-			//jsonDocumentMutation.SplunkTypeDefinitions(targetMutation.Type, document)
-			recurseArgTypes(document, jsonDocumentMutation, targetMutation)
-		}
-	}
+         if allMutations || process(nerdgraph.ParseServiceName(fieldDefinition.Name), mutationList) {
+            var service *nerdgraph.Service
+            service = nerdgraph.NewService(fieldDefinition, schemaDocument)
+            if service != nil {
+               services[service.GetName()] = service
+            }
+         }
+      }
+   }
 
-	//For GraphQL query types
-	for _, query := range getQueryTypes(document) {
-		queryDefinition := document.Definitions.ForName(query)
-
-		var targetQueryName string
-		fmt.Printf("Enter a target query type to translate or press 1 to exit: ")
-		fmt.Scan(&targetQueryName)
-		if targetQueryName == "1" {
-			break
-		}
-		targetQuery := queryDefinition.Fields.ForName(targetQueryName)
-
-		//handle recursion through types based on if definition arguments exist
-		if targetQuery.Arguments == nil {
-			recurseFieldTypes(document, jsonDocumentQuery, targetQuery)
-		} else {
-			recurseArgTypes(document, jsonDocumentQuery, targetQuery)
-		}
-
-	}
-
-	log.Printf("main: complete")
-	b, err := json.MarshalIndent(jsonDocumentMutation, "", "   ")
-	if err != nil {
-		log.Fatal(err)
-	}
-	q, err2 := json.MarshalIndent(jsonDocumentQuery, "", "   ")
-	if err2 != nil {
-		log.Fatal(err2)
-	}
-
-	//print string to console
-	//fmt.Println(string(b), string(q))
-
-	// print translated schema to its own json file
-	writeToFile(string(b), "translated-mutation-schema.json")
-	writeToFile(string(q), "translated-query-schema.json")
-	fmt.Println("Refer to translated-x-schema.json for translated schema.")
+   // We've loaded and grouped the services, tell them to parse and marshal
+   for _, service := range services {
+      service.Emit()
+   }
 }
 
-func getMutationTypes(document *ast.SchemaDocument) []string {
-	types := make([]string, 0)
-	for _, schemaDefinition := range document.Schema {
-		for _, operationType := range schemaDefinition.OperationTypes {
-			if operationType.Operation == "mutation" {
-				types = append(types, operationType.Type)
-			}
-		}
-	}
-	return types
+func process(mutation string, list []string) bool {
+   log.Debugf("process: mutation: %s list: %v", mutation, list)
+   for _, prefix := range list {
+      if strings.HasPrefix(mutation, prefix) {
+         return true
+      }
+   }
+   return false
 }
 
-func getQueryTypes(document *ast.SchemaDocument) []string {
-	types := make([]string, 0)
-	for _, schemaDefinition := range document.Schema {
-		for _, operationType := range schemaDefinition.OperationTypes {
-			if operationType.Operation == "query" {
-				types = append(types, operationType.Type)
-			}
-		}
-	}
-	return types
-}
-
-func writeToFile(schema, fileName string) {
-	f, errFile := os.Create(fileName)
-	if errFile != nil {
-		log.Fatal(errFile)
-	}
-	defer f.Close()
-	_, errWrite := f.WriteString(schema)
-	if errWrite != nil {
-		log.Fatal(errWrite)
-	}
+// Get the mutation Definitions associated at the Schema TOP LEVEL.  Most likely this is one- RootMutationType
+func getMutationDefinitions(doc *ast.SchemaDocument) []*ast.Definition {
+   defs := make([]*ast.Definition, 0, len(doc.Schema))
+   for _, sd := range doc.Schema {
+      for _, op := range sd.OperationTypes {
+         if op.Operation == ast.Mutation {
+            defs = append(defs, doc.Definitions.ForName(op.Type))
+         }
+      }
+   }
+   return defs
 }

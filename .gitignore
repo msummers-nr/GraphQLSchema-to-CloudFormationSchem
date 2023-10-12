@@ -3,3 +3,9 @@ tmp
 
 main
 main.json
+
+*.graphql
+*.json
+*.log
+*.schema
+*.yml
