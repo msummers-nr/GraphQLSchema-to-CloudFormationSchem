@@ -26,6 +26,26 @@ func NewService(definition *ast.FieldDefinition, document *ast.SchemaDocument) *
       service = &Service{serviceName: serviceName}
       services[serviceName] = service
    }
+
+   // Insert the Tags property
+   entity := document.Definitions.ForName("Entity")
+   if entity != nil {
+      tags := entity.Fields.ForName("tags")
+      if tags != nil {
+         tagArg := ast.ArgumentDefinition{
+            Description:              "",
+            Name:                     "tags",
+            DefaultValue:             nil,
+            Type:                     tags.Type,
+            Directives:               nil,
+            Position:                 nil,
+            BeforeDescriptionComment: nil,
+            AfterDescriptionComment:  nil,
+         }
+         definition.Arguments = append(definition.Arguments, &tagArg)
+      }
+   }
+
    if strings.Contains(definition.Name, "Create") {
       service.createDefinition = definition
    } else if strings.Contains(definition.Name, "Update") {

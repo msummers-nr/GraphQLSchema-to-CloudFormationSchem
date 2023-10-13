@@ -49,7 +49,8 @@ func NewDocument() (document *Document) {
    document.Handlers["delete"] = handler
    document.Handlers["read"] = handler
    document.Handlers["list"] = handler
-   document.Tagging["taggable"] = false
+   document.Tagging["taggable"] = true
+   document.Tagging["tagProperty"] = "#/definitions/EntityTag"
 
    return
 }
