@@ -19,6 +19,7 @@ type Document struct {
    PrimaryIdentifier    []string               `json:"primaryIdentifier"`
    Handlers             map[string]*Handler    `json:"handlers"`
    Tagging              map[string]interface{} `json:"tagging"`
+   knownTypes           map[string]interface{} `json:"-"`
 }
 
 type Handler struct {
@@ -38,6 +39,7 @@ func NewDocument() (document *Document) {
       PrimaryIdentifier:    make([]string, 0),
       Handlers:             make(map[string]*Handler),
       Tagging:              make(map[string]interface{}),
+      knownTypes:           make(map[string]interface{}),
    }
    document.ReadOnlyProperties = append(document.ReadOnlyProperties, "/properties/Guid")
    document.PrimaryIdentifier = append(document.PrimaryIdentifier, "/properties/Guid")
@@ -206,7 +208,7 @@ func (d *Document) SplunkTypeDefinitions(astType *ast.Type, gqlSchema *ast.Schem
 
       // check if it's a known type to avoid duplicates/infinite recursion
       // log.Printf("addType: %v", field.Type.Name())
-      if err = addType(field.Type.Name(), true); err != nil {
+      if err = d.addType(field.Type.Name(), true); err != nil {
          continue
       }
 
@@ -245,4 +247,20 @@ func (d *Document) SplunkUnionTypeDefinitions(astType *ast.Type, gqlSchema *ast.
       d.SplunkTypeDefinitions(&astFieldType, gqlSchema) // recurse on this type
    }
 
+}
+
+// map of known types to check duplicates
+
+func (d *Document) addType(name string, add bool) (err error) {
+   // Remove not null indicator
+   name = strings.TrimSuffix(name, "!")
+
+   if _, found := d.knownTypes[name]; found {
+      return fmt.Errorf("duplicate type: %v", name)
+   }
+   // if add is true, modify the map, otherwise only checking the map
+   if add {
+      d.knownTypes[name] = nil
+   }
+   return
 }
