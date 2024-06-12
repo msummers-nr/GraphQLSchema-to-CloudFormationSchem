@@ -4,7 +4,7 @@ go 1.21
 
 require (
 	github.com/sirupsen/logrus v1.9.3
-	github.com/vektah/gqlparser/v2 v2.5.10
+	github.com/vektah/gqlparser/v2 v2.5.14
 	golang.org/x/text v0.13.0
 )
 
